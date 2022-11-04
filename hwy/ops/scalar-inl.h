@@ -574,17 +574,23 @@ HWY_API Vec1<double> Abs(const Vec1<double> a) {
 
 // ------------------------------ Min/Max
 
-// <cmath> may be unavailable, so implement type-safe libc wrappers
+// <cmath> may be unavailable, so implement our own.
 namespace detail {
 
-static inline bool IsInf(float f) { return isinff(f) == 1; }
-static inline bool IsInf(double f) { return isinf(f) == 1; }
-
-static inline bool IsNaN(float f) { return isnanf(f) == 1; }
-static inline bool IsNaN(double f) { return isnan(f) == 1; }
-
-static inline float Abs(float f) { return fabsf(f); }
-static inline double Abs(double f) { return fabs(f); }
+static inline float Abs(float f) {
+  uint32_t i;
+  CopyBytes<4>(&f, &i);
+  i &= 0x7FFFFFFFu;
+  CopyBytes<4>(&i, &f);
+  return f;
+}
+static inline double Abs(double f) {
+  uint64_t i;
+  CopyBytes<8>(&f, &i);
+  i &= 0x7FFFFFFFFFFFFFFFull;
+  CopyBytes<8>(&i, &f);
+  return f;
+}
 
 static inline bool SignBit(float f) {
   uint32_t i;
@@ -606,8 +612,8 @@ HWY_API Vec1<T> Min(const Vec1<T> a, const Vec1<T> b) {
 
 template <typename T, HWY_IF_FLOAT(T)>
 HWY_API Vec1<T> Min(const Vec1<T> a, const Vec1<T> b) {
-  if (detail::IsNaN(a.raw)) return b;
-  if (detail::IsNaN(b.raw)) return a;
+  if (isnan(a.raw)) return b;
+  if (isnan(b.raw)) return a;
   return Vec1<T>(HWY_MIN(a.raw, b.raw));
 }
 
@@ -618,8 +624,8 @@ HWY_API Vec1<T> Max(const Vec1<T> a, const Vec1<T> b) {
 
 template <typename T, HWY_IF_FLOAT(T)>
 HWY_API Vec1<T> Max(const Vec1<T> a, const Vec1<T> b) {
-  if (detail::IsNaN(a.raw)) return b;
-  if (detail::IsNaN(b.raw)) return a;
+  if (isnan(a.raw)) return b;
+  if (isnan(b.raw)) return a;
   return Vec1<T>(HWY_MAX(a.raw, b.raw));
 }
 
@@ -1227,8 +1233,7 @@ HWY_API Vec1<ToT> ConvertTo(Sisd<ToT> /* tag */, Vec1<FromT> from) {
   // float## -> int##: return closest representable value. We cannot exactly
   // represent LimitsMax<ToT> in FromT, so use double.
   const double f = static_cast<double>(from.raw);
-  if (detail::IsInf(from.raw) ||
-      fabs(f) > static_cast<double>(LimitsMax<ToT>())) {
+  if (isinf(from.raw) || fabs(f) > static_cast<double>(LimitsMax<ToT>())) {
     return Vec1<ToT>(detail::SignBit(from.raw) ? LimitsMin<ToT>()
                                                : LimitsMax<ToT>());
   }
